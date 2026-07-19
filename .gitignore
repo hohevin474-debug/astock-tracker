@@ -1,0 +1,21 @@
+# Bark 密钥（绝不上传）
+.bark_key
+.inbox_config.json
+.recipient_email
+
+# 缓存和临时文件
+__pycache__/
+*.pyc
+.pool_cache.json
+
+# 报告文件
+reports/
+public/
+
+# IDE
+.vscode/
+.idea/
+
+# Python
+*.egg-info/
+dist/

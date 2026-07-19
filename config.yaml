@@ -1,0 +1,120 @@
+# A股短线跟踪系统 — 配置文件
+# 修改此文件以自定义参数，无需改代码
+
+# ========== 基本设置 ==========
+system:
+  name: "A股短线实时跟踪系统"
+  version: "1.0.0"
+  timezone: "Asia/Shanghai"
+
+# ========== 推送设置 ==========
+push:
+  # 盘前推送时间
+  pre_market:
+    hour: 9
+    minute: 0
+    description: "盘前精选推送（含选股+买卖价格+隔夜资讯）"
+  
+  # 盘中更新
+  intraday_updates:
+    - hour: 10
+      minute: 30
+      description: "盘中更新#1 — 开盘1小时走势"
+    - hour: 11
+      minute: 30
+      description: "午间更新#2 — 半日复盘+午后展望"
+    - hour: 14
+      minute: 0
+      description: "盘中更新#3 — 午后走势+尾盘策略"
+    - hour: 15
+      minute: 0
+      description: "收盘更新#4 — 全天总结+明日预判"
+
+# ========== 选股参数 ==========
+screening:
+  # 精选池数量
+  pool_size: 8
+  # 稳健/进取 配比（各50%即各4只）
+  conservative_ratio: 0.5
+  aggressive_ratio: 0.5
+  
+  # 稳健轨参数
+  conservative:
+    min_market_cap: 20000000000    # 最小市值 200亿
+    max_market_cap: 200000000000   # 最大市值 2000亿
+    min_pe: 10                     # 最小PE
+    max_pe: 30                     # 最大PE
+    max_volatility_20d: 0.03       # 20日波动率上限
+    min_avg_volume_20d: 50000000   # 最小日均成交额 5000万
+    min_institution_holding: 0.05  # 机构最低持仓 5%
+    
+  # 进取轨参数
+  aggressive:
+    min_market_cap: 3000000000     # 最小市值 30亿
+    max_market_cap: 100000000000   # 最大市值 1000亿
+    min_daily_turnover_rate: 0.015  # 最低换手率 1.5%
+    min_volume_ratio_5d: 0.8       # 5日量比最低 0.8x（放宽以适应不同市况）
+    min_fund_inflow_5d: 100000000  # 5日资金净流入最低 1亿
+    recent_limit_up_days: 1        # 近10日至少有过1次涨停
+
+# ========== 定价参数 ==========
+pricing:
+  # 支撑位计算窗口
+  support_window_days: 20
+  # 阻力位计算窗口
+  resistance_window_days: 60
+  # 布林带参数
+  bollinger_period: 20
+  bollinger_std: 2
+  # 目标价设定
+  target1_upside_pct: 0.08    # 第一目标 涨8%
+  target2_upside_pct: 0.15    # 第二目标 涨15%
+  stop_loss_pct: 0.05         # 止损线 跌5%
+
+# ========== 数据源 ==========
+data_sources:
+  primary: "akshare"
+  fallback: "baostock"
+  # 行情刷新间隔（秒）
+  refresh_interval: 3
+  # 请求重试次数
+  max_retries: 3
+  # 重试间隔（秒）
+  retry_delay: 5
+
+# ========== 报告设置 ==========
+report:
+  # 报告语言
+  language: "zh-CN"
+  # 包含板块分析
+  include_sector_analysis: true
+  # 包含龙虎榜
+  include_dragon_tiger: true
+  # 包含资金流向
+  include_fund_flow: true
+  # 历史数据保留天数
+  retention_days: 30
+
+# ========== Bark 推送设置 ==========
+bark:
+  # Bark 服务器地址（自建服务请修改，官方服务为 https://api.day.app）
+  server: "https://api.day.app"
+  # Device Key（在 Bark App 首页获取，必填）
+  device_key: ""
+  # 推送声音
+  sound: "birdsong"
+  # 是否自动复制推送内容
+  auto_copy: true
+  # 消息分组
+  group: "A股短线跟踪"
+  # 图标（可选）
+  icon: "https://cdn.jsdelivr.net/gh/Finb/bark@master/Images/icon.png"
+
+# ========== AgentMail 设置（备用） ==========
+email:
+  # AgentMail 收件箱配置（运行 email_sender.py 时自动创建/读取）
+  domain: "agentmail.to"
+  # 报告发件人名称
+  sender_name: "A股短线跟踪系统"
+  # 报告标题前缀
+  subject_prefix: "[A股短线]"
