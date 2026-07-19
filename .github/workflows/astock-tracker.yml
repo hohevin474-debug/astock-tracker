@@ -1,0 +1,55 @@
+name: A股短线跟踪
+
+on:
+  schedule:
+    # 北京时间 09:00 = UTC 01:00
+    - cron: '0 1 * * 1-5'
+    # 北京时间 10:30 = UTC 02:30
+    - cron: '30 2 * * 1-5'
+    # 北京时间 11:30 = UTC 03:30
+    - cron: '30 3 * * 1-5'
+    # 北京时间 14:00 = UTC 06:00
+    - cron: '0 6 * * 1-5'
+    # 北京时间 15:00 = UTC 07:00
+    - cron: '0 7 * * 1-5'
+  workflow_dispatch:  # 允许手动触发
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Install dependencies
+        run: pip install requests pyyaml pandas numpy
+      
+      - name: Determine report type
+        id: report
+        run: |
+          HOUR=$(date -u +%H)
+          MINUTE=$(date -u +%M)
+          if [ "$HOUR" = "01" ] && [ "$MINUTE" -lt "30" ]; then
+            echo "type=pre_market" >> $GITHUB_OUTPUT
+          elif [ "$HOUR" = "02" ] && [ "$MINUTE" -ge "30" ]; then
+            echo "type=intraday_1" >> $GITHUB_OUTPUT
+          elif [ "$HOUR" = "03" ] && [ "$MINUTE" -ge "30" ]; then
+            echo "type=midday" >> $GITHUB_OUTPUT
+          elif [ "$HOUR" = "06" ] && [ "$MINUTE" -lt "30" ]; then
+            echo "type=intraday_3" >> $GITHUB_OUTPUT
+          elif [ "$HOUR" = "07" ] && [ "$MINUTE" -lt "30" ]; then
+            echo "type=close" >> $GITHUB_OUTPUT
+          else
+            echo "type=skip" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Run A-stock tracker
+        if: steps.report.outputs.type != 'skip'
+        env:
+          BARK_DEVICE_KEY: ${{ secrets.BARK_DEVICE_KEY }}
+        run: |
+          python3 main.py ${{ steps.report.outputs.type }}
