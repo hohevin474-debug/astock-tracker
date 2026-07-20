@@ -16,9 +16,10 @@ A股短线跟踪系统 — 主调度器
 """
 import sys
 import os
+import json
 import logging
 import yaml
-from datetime import datetime
+from datetime import datetime, timedelta
 
 # 添加当前目录到路径
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -46,6 +47,127 @@ logger = logging.getLogger(__name__)
 CONFIG_PATH = os.path.join(os.path.dirname(__file__), 'config.yaml')
 with open(CONFIG_PATH, 'r') as f:
     CONFIG = yaml.safe_load(f)
+
+# ====== 推送时间窗口（北京时间） ======
+# 每个推送在时间窗口内只发一次（防重复）
+PUSH_SLOTS = {
+    'pre_market':  {'hour': 9,  'minute': 0,  'window': 15},  # 09:00-09:15
+    'intraday_1':  {'hour': 10, 'minute': 30, 'window': 15},  # 10:30-10:45
+    'midday':      {'hour': 11, 'minute': 30, 'window': 15},  # 11:30-11:45
+    'intraday_3':  {'hour': 14, 'minute': 0,  'window': 15},  # 14:00-14:15
+    'close':       {'hour': 15, 'minute': 0,  'window': 15},  # 15:00-15:15
+}
+
+# 防重复文件路径（每个 workflow run 独立，用 .sent 文件记录当天已发推送）
+SENT_FILE = os.path.join(PROJECT_DIR, '.sent_today.json')
+
+
+def _get_beijing_time() -> datetime:
+    """获取当前北京时间"""
+    return datetime.utcnow() + timedelta(hours=8)
+
+
+def _should_push(slot_name: str) -> bool:
+    """
+    判断当前时间是否在指定推送的时间窗口内，且今天尚未发送过。
+    返回 True 表示应该执行推送。
+    """
+    if slot_name not in PUSH_SLOTS:
+        return False
+    
+    slot = PUSH_SLOTS[slot_name]
+    now = _get_beijing_time()
+    today_str = now.strftime('%Y-%m-%d')
+    
+    # 检查是否在时间窗口内
+    slot_time = now.replace(hour=slot['hour'], minute=slot['minute'], second=0, microsecond=0)
+    window_end = slot_time + timedelta(minutes=slot['window'])
+    
+    if now < slot_time or now >= window_end:
+        return False
+    
+    # 检查今天是否已经发送过
+    sent = _load_sent_records()
+    if sent.get('date') != today_str:
+        # 新的一天，重置记录
+        sent = {'date': today_str, 'slots': {}}
+        _save_sent_records(sent)
+    
+    if slot_name in sent.get('slots', {}):
+        logger.info(f"⏭ {slot_name} 今天已推送过，跳过")
+        return False
+    
+    return True
+
+
+def _mark_sent(slot_name: str):
+    """标记某个时间槽已发送"""
+    sent = _load_sent_records()
+    today_str = _get_beijing_time().strftime('%Y-%m-%d')
+    if sent.get('date') != today_str:
+        sent = {'date': today_str, 'slots': {}}
+    sent.setdefault('slots', {})[slot_name] = _get_beijing_time().isoformat()
+    _save_sent_records(sent)
+
+
+def _load_sent_records() -> dict:
+    """加载已发送记录"""
+    if os.path.exists(SENT_FILE):
+        try:
+            with open(SENT_FILE, 'r') as f:
+                return json.load(f)
+        except (json.JSONDecodeError, IOError):
+            pass
+    return {}
+
+
+def _save_sent_records(records: dict):
+    """保存已发送记录"""
+    try:
+        with open(SENT_FILE, 'w') as f:
+            json.dump(records, f)
+    except IOError as e:
+        logger.warning(f"无法保存发送记录: {e}")
+
+
+def run_auto():
+    """
+    智能自动模式：
+    - 根据北京时间自动判断应该执行哪个推送
+    - 通过 .sent_today.json 防重复（每个推送每天只发一次）
+    - 只在交易日运行
+    """
+    now = _get_beijing_time()
+    logger.info(f"🤖 Auto 模式启动 | 北京时间: {now.strftime('%Y-%m-%d %H:%M:%S')} (周{['一','二','三','四','五','六','日'][now.weekday()]})")
+    
+    if not is_trading_day():
+        logger.info("今天非交易日，跳过所有推送")
+        return
+    
+    # 按优先级检查各个推送槽位
+    triggered = None
+    for slot_name in ['pre_market', 'intraday_1', 'midday', 'intraday_3', 'close']:
+        if _should_push(slot_name):
+            triggered = slot_name
+            break
+    
+    if not triggered:
+        # 检查是否在周末测试模式
+        now_str = now.strftime('%H:%M')
+        logger.info(f"⏰ 当前时间 {now_str} 不在任何推送窗口内，跳过")
+        return
+    
+    logger.info(f"🎯 触发推送: {triggered}")
+    
+    # 执行对应的推送
+    if triggered == 'pre_market':
+        run_pre_market()
+    elif triggered in ('intraday_1', 'midday', 'intraday_3', 'close'):
+        run_intraday_update(triggered)
+    
+    # 标记已发送
+    _mark_sent(triggered)
+    logger.info(f"✅ {triggered} 推送完成，已标记")
 
 
 def get_recipient_email() -> str:
@@ -354,7 +476,9 @@ if __name__ == '__main__':
         setup_bark()
     elif mode == 'status':
         show_status()
+    elif mode == 'auto':
+        run_auto()
     else:
         print(f"未知模式: {mode}")
-        print("可用模式: pre_market, intraday_1, midday, intraday_3, close, track, test, setup_bark, status")
+        print("可用模式: pre_market, intraday_1, midday, intraday_3, close, track, test, setup_bark, status, auto")
         sys.exit(1)
