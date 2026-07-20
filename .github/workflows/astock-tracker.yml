@@ -44,11 +44,15 @@ jobs:
       - name: Run A-stock tracker
         env:
           BARK_DEVICE_KEY: ${{ secrets.BARK_DEVICE_KEY }}
-          GITHUB_WORKFLOW_MODE: ${{ github.event.inputs.mode || 'auto' }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           GITHUB_RUN_ID: ${{ github.run_id }}
         run: |
-          python3 main.py auto
+          MODE="${{ github.event.inputs.mode }}"
+          if [ -z "$MODE" ] || [ "$MODE" = "auto" ]; then
+            python3 main.py auto
+          else
+            python3 main.py "$MODE"
+          fi
 
       - name: Commit sent records (防重复)
         if: always()
