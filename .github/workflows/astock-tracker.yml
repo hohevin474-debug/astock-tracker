@@ -12,7 +12,19 @@ on:
     - cron: '0 6 * * 1-5'
     # 北京时间 15:00 = UTC 07:00
     - cron: '0 7 * * 1-5'
-  workflow_dispatch:  # 允许手动触发
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: '报告类型'
+        required: true
+        type: choice
+        options:
+          - auto
+          - pre_market
+          - intraday_1
+          - midday
+          - intraday_3
+          - close
 
 jobs:
   run:
@@ -31,20 +43,25 @@ jobs:
       - name: Determine report type
         id: report
         run: |
-          HOUR=$(date -u +%H)
-          MINUTE=$(date -u +%M)
-          if [ "$HOUR" = "01" ] && [ "$MINUTE" -lt "30" ]; then
-            echo "type=pre_market" >> $GITHUB_OUTPUT
-          elif [ "$HOUR" = "02" ] && [ "$MINUTE" -ge "30" ]; then
-            echo "type=intraday_1" >> $GITHUB_OUTPUT
-          elif [ "$HOUR" = "03" ] && [ "$MINUTE" -ge "30" ]; then
-            echo "type=midday" >> $GITHUB_OUTPUT
-          elif [ "$HOUR" = "06" ] && [ "$MINUTE" -lt "30" ]; then
-            echo "type=intraday_3" >> $GITHUB_OUTPUT
-          elif [ "$HOUR" = "07" ] && [ "$MINUTE" -lt "30" ]; then
-            echo "type=close" >> $GITHUB_OUTPUT
+          MODE="${{ github.event.inputs.mode }}"
+          if [ "$MODE" != "" ] && [ "$MODE" != "auto" ]; then
+            echo "type=$MODE" >> $GITHUB_OUTPUT
           else
-            echo "type=skip" >> $GITHUB_OUTPUT
+            HOUR=$(date -u +%H)
+            MINUTE=$(date -u +%M)
+            if [ "$HOUR" = "01" ] && [ "$MINUTE" -lt "30" ]; then
+              echo "type=pre_market" >> $GITHUB_OUTPUT
+            elif [ "$HOUR" = "02" ] && [ "$MINUTE" -ge "30" ]; then
+              echo "type=intraday_1" >> $GITHUB_OUTPUT
+            elif [ "$HOUR" = "03" ] && [ "$MINUTE" -ge "30" ]; then
+              echo "type=midday" >> $GITHUB_OUTPUT
+            elif [ "$HOUR" = "06" ] && [ "$MINUTE" -lt "30" ]; then
+              echo "type=intraday_3" >> $GITHUB_OUTPUT
+            elif [ "$HOUR" = "07" ] && [ "$MINUTE" -lt "30" ]; then
+              echo "type=close" >> $GITHUB_OUTPUT
+            else
+              echo "type=skip" >> $GITHUB_OUTPUT
+            fi
           fi
       
       - name: Run A-stock tracker
