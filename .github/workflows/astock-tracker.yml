@@ -2,16 +2,15 @@ name: A股短线跟踪
 
 on:
   schedule:
-    # 北京时间 09:00 = UTC 01:00
-    - cron: '0 1 * * 1-5'
-    # 北京时间 10:30 = UTC 02:30
-    - cron: '30 2 * * 1-5'
-    # 北京时间 11:30 = UTC 03:30
-    - cron: '30 3 * * 1-5'
-    # 北京时间 14:00 = UTC 06:00
-    - cron: '0 6 * * 1-5'
-    # 北京时间 15:00 = UTC 07:00
-    - cron: '0 7 * * 1-5'
+    # 北京时间 09:00-15:00 每小时触发一次（UTC 01:00-07:00）
+    # 用密集触发来弥补 GitHub schedule 的不稳定性
+    - cron: '0 1 * * 1-5'     # 09:00
+    - cron: '30 2 * * 1-5'    # 10:30
+    - cron: '30 3 * * 1-5'    # 11:30
+    - cron: '0 6 * * 1-5'     # 14:00
+    - cron: '0 7 * * 1-5'     # 15:00
+    # 兜底：每小时整点触发，由脚本判断是否在交易时段
+    - cron: '0 1-7 * * 1-5'
   workflow_dispatch:
     inputs:
       mode:
@@ -45,24 +44,30 @@ jobs:
         id: report
         run: |
           MODE="${{ github.event.inputs.mode }}"
+          HOUR=$(date -u +%H)
+          MINUTE=$(date -u +%M)
+          
+          # 手动指定模式
           if [ "$MODE" != "" ] && [ "$MODE" != "auto" ]; then
             echo "type=$MODE" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          # 自动判断（根据 UTC 时间匹配最近的报告类型）
+          # 每个时段只触发一次对应报告
+          if [ "$HOUR" = "01" ] && [ "$MINUTE" -lt "30" ]; then
+            echo "type=pre_market" >> $GITHUB_OUTPUT
+          elif [ "$HOUR" = "02" ] && [ "$MINUTE" -ge "20" ] && [ "$MINUTE" -lt "40" ]; then
+            echo "type=intraday_1" >> $GITHUB_OUTPUT
+          elif [ "$HOUR" = "03" ] && [ "$MINUTE" -ge "20" ] && [ "$MINUTE" -lt "40" ]; then
+            echo "type=midday" >> $GITHUB_OUTPUT
+          elif [ "$HOUR" = "06" ] && [ "$MINUTE" -lt "15" ]; then
+            echo "type=intraday_3" >> $GITHUB_OUTPUT
+          elif [ "$HOUR" = "07" ] && [ "$MINUTE" -lt "15" ]; then
+            echo "type=close" >> $GITHUB_OUTPUT
           else
-            HOUR=$(date -u +%H)
-            MINUTE=$(date -u +%M)
-            if [ "$HOUR" = "01" ] && [ "$MINUTE" -lt "30" ]; then
-              echo "type=pre_market" >> $GITHUB_OUTPUT
-            elif [ "$HOUR" = "02" ] && [ "$MINUTE" -ge "30" ]; then
-              echo "type=intraday_1" >> $GITHUB_OUTPUT
-            elif [ "$HOUR" = "03" ] && [ "$MINUTE" -ge "30" ]; then
-              echo "type=midday" >> $GITHUB_OUTPUT
-            elif [ "$HOUR" = "06" ] && [ "$MINUTE" -lt "30" ]; then
-              echo "type=intraday_3" >> $GITHUB_OUTPUT
-            elif [ "$HOUR" = "07" ] && [ "$MINUTE" -lt "30" ]; then
-              echo "type=close" >> $GITHUB_OUTPUT
-            else
-              echo "type=skip" >> $GITHUB_OUTPUT
-            fi
+            # 非关键时段，跳过（避免重复推送）
+            echo "type=skip" >> $GITHUB_OUTPUT
           fi
       
       - name: Run A-stock tracker
