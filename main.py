@@ -9,6 +9,7 @@ A股短线跟踪系统 — 主调度器
   python main.py midday         # 午间更新（11:30）
   python main.py intraday_3     # 盘中更新#3（14:00）
   python main.py close          # 收盘总结（15:00）
+  python main.py track          # 持仓跟踪分析
   python main.py test           # 测试模式（立即运行盘前报告）
   python main.py setup_bark     # 配置 Bark 推送
   python main.py status         # 系统状态
@@ -33,6 +34,10 @@ from report_generator import (
 )
 from push_sender import (
     save_report, send_bark, build_push_summary, get_device_key, save_device_key
+)
+from position_tracker import (
+    track_all_positions, build_track_summary, build_daily_analysis,
+    load_positions
 )
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
@@ -140,7 +145,60 @@ def run_intraday_update(update_type: str):
     # 推送
     _push_to_bark(pool, indices, update_type, html)
     
+    # ====== 持仓跟踪（14:00和15:00附带深度分析） ======
+    if update_type in ('intraday_3', 'close'):
+        _run_track_analysis(pool, update_type)
+    
     logger.info(f"盘中更新 {update_type} 完成")
+
+
+def run_track():
+    """独立持仓跟踪分析"""
+    logger.info("="*60)
+    logger.info("执行持仓跟踪分析")
+    logger.info("="*60)
+    
+    pool = generate_weekly_pool(force_refresh=False)
+    if not pool:
+        pool = generate_weekly_pool(force_refresh=True)
+    
+    _run_track_analysis(pool, 'track')
+
+
+def _run_track_analysis(pool: list, mode: str):
+    """持仓跟踪核心逻辑"""
+    logger.info("分析持仓状态...")
+    
+    # 更新池内价格
+    pool = update_pool_prices(pool)
+    
+    # 跟踪所有持仓
+    result = track_all_positions(pool)
+    
+    # 发送持仓摘要推送
+    summary_text = build_track_summary(result)
+    send_bark(
+        f"📊 持仓跟踪 · {datetime.now().strftime('%H:%M')}",
+        summary_text,
+        group="A股持仓跟踪"
+    )
+    
+    # 如果有卖出/减仓警报，单独推送
+    for alert in result['alerts']:
+        if alert['type'] in ('卖出', '减仓'):
+            send_bark(alert['title'], alert['body'], group="A股持仓跟踪", sound="alarm")
+    
+    # 14:00 和收盘时发送深度分析
+    if mode in ('intraday_3', 'close', 'track'):
+        analysis = build_daily_analysis(result['active'])
+        if analysis:
+            send_bark(
+                f"🔍 深度分析 · {datetime.now().strftime('%H:%M')}",
+                analysis[:500],  # Bark 有长度限制
+                group="A股持仓跟踪"
+            )
+    
+    logger.info(f"持仓跟踪完成: {result['summary']['total']}只活跃, {len(result['alerts'])}条警报")
 
 
 def run_test():
@@ -270,6 +328,7 @@ if __name__ == '__main__':
         print("  python main.py midday        # 午间更新 (11:30)")
         print("  python main.py intraday_3    # 盘中更新#3 (14:00)")
         print("  python main.py close         # 收盘总结 (15:00)")
+        print("  python main.py track         # 持仓跟踪分析")
         print("  python main.py test          # 测试模式")
         print("  python main.py setup_bark    # 配置 Bark 推送")
         print("  python main.py status        # 系统状态")
@@ -287,6 +346,8 @@ if __name__ == '__main__':
         run_intraday_update('intraday_3')
     elif mode == 'close':
         run_intraday_update('close')
+    elif mode == 'track':
+        run_track()
     elif mode == 'test':
         run_test()
     elif mode == 'setup_bark':
@@ -295,5 +356,5 @@ if __name__ == '__main__':
         show_status()
     else:
         print(f"未知模式: {mode}")
-        print("可用模式: pre_market, intraday_1, midday, intraday_3, close, test, setup_bark, status")
+        print("可用模式: pre_market, intraday_1, midday, intraday_3, close, track, test, setup_bark, status")
         sys.exit(1)

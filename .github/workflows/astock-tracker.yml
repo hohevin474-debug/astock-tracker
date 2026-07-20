@@ -25,6 +25,7 @@ on:
           - midday
           - intraday_3
           - close
+          - track
 
 jobs:
   run:
