@@ -50,12 +50,13 @@ with open(CONFIG_PATH, 'r') as f:
 
 # ====== 推送时间窗口（北京时间） ======
 # 每个推送在时间窗口内只发一次（防重复）
+# 窗口 20 分钟确保 GitHub Actions 每 15 分钟 cron 至少有 1 次机会命中
 PUSH_SLOTS = {
-    'pre_market':  {'hour': 9,  'minute': 0,  'window': 15},  # 09:00-09:15
-    'intraday_1':  {'hour': 10, 'minute': 30, 'window': 15},  # 10:30-10:45
-    'midday':      {'hour': 11, 'minute': 30, 'window': 15},  # 11:30-11:45
-    'intraday_3':  {'hour': 14, 'minute': 0,  'window': 15},  # 14:00-14:15
-    'close':       {'hour': 15, 'minute': 0,  'window': 15},  # 15:00-15:15
+    'pre_market':  {'hour': 9,  'minute': 0,  'window': 20},  # 09:00-09:20
+    'intraday_1':  {'hour': 10, 'minute': 30, 'window': 20},  # 10:30-10:50
+    'midday':      {'hour': 11, 'minute': 30, 'window': 20},  # 11:30-11:50
+    'intraday_3':  {'hour': 14, 'minute': 0,  'window': 20},  # 14:00-14:20
+    'close':       {'hour': 15, 'minute': 0,  'window': 20},  # 15:00-15:20
 }
 
 # 防重复文件路径（每个 workflow run 独立，用 .sent 文件记录当天已发推送）
