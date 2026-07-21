@@ -40,6 +40,7 @@ from position_tracker import (
     track_all_positions, build_track_summary, build_daily_analysis,
     load_positions
 )
+from pdf_generator import generate_pdf, build_text_summary
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
 logger = logging.getLogger(__name__)
@@ -186,11 +187,17 @@ def save_recipient_email(email: str):
 
 
 def _push_to_bark(pool: list, indices: dict, report_type: str, html: str):
-    """统一推送逻辑：Bark 通知 + 本地保存"""
+    """统一推送逻辑：Bark 通知 + PDF 生成 + WorkBuddy 聊天框展示"""
     # 1. 保存 HTML 报告到本地
     filepath = save_report(html, report_type)
     
-    # 2. Bark 推送摘要
+    # 2. 生成 PDF
+    pdf_path = generate_pdf(html, report_type, pool, indices)
+    
+    # 3. 生成文本摘要（用于 WorkBuddy 聊天框）
+    text_summary = build_text_summary(pool, indices, report_type)
+    
+    # 4. Bark 推送摘要
     device_key = get_device_key()
     if device_key:
         title, body = build_push_summary(pool, indices, report_type)
@@ -198,6 +205,11 @@ def _push_to_bark(pool: list, indices: dict, report_type: str, html: str):
         logger.info(f"Bark 推送: {'✅ 成功' if success else '❌ 失败'}")
     else:
         logger.warning("未配置 Bark Device Key，跳过手机推送")
+    
+    # 5. 输出到 WorkBuddy 聊天框
+    print("\n" + text_summary)
+    if pdf_path:
+        print(f"\n📄 PDF 报告: {pdf_path}")
     
     return filepath
 
@@ -306,10 +318,14 @@ def _run_track_analysis(pool: list, mode: str):
         group="A股持仓跟踪"
     )
     
+    # WorkBuddy 聊天框输出
+    print("\n" + summary_text)
+    
     # 如果有卖出/减仓警报，单独推送
     for alert in result['alerts']:
         if alert['type'] in ('卖出', '减仓'):
             send_bark(alert['title'], alert['body'], group="A股持仓跟踪", sound="alarm")
+            print(f"\n🚨 {alert['title']}: {alert['body']}")
     
     # 14:00 和收盘时发送深度分析
     if mode in ('intraday_3', 'close', 'track'):
@@ -317,9 +333,10 @@ def _run_track_analysis(pool: list, mode: str):
         if analysis:
             send_bark(
                 f"🔍 深度分析 · {datetime.now().strftime('%H:%M')}",
-                analysis[:500],  # Bark 有长度限制
+                analysis[:500],
                 group="A股持仓跟踪"
             )
+            print(f"\n🔍 深度分析:\n{analysis[:1000]}")
     
     logger.info(f"持仓跟踪完成: {result['summary']['total']}只活跃, {len(result['alerts'])}条警报")
 
